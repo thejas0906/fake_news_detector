@@ -1,4 +1,4 @@
-from models import User,News
+from backend.models import User,News
 from fastapi import FastAPI
 app=FastAPI()
 users=[User(name='Thejas',email='kickgunther4@gmail.com',password='fastapi09#'),User(name='sakthi',email='sakthi@gmail.com',password='sak0909')]
@@ -27,5 +27,8 @@ def create_user(user:User):
     if l+u+s+n==4:
         users.append(user)
         return user
+@app.get('/get-all-users/')
+def get_all_user():
+    return users
 
     
