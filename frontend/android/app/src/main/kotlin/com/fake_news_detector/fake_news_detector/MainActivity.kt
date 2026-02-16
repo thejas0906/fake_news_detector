@@ -1,0 +1,5 @@
+package com.fake_news_detector.fake_news_detector
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
