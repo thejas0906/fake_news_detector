@@ -47,6 +47,12 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to capture images.</string>
+<<<<<<< HEAD
+=======
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to your gallery</string>
+
+>>>>>>> 2d7dfb2 (Inital commit)
 
 </dict>
 </plist>
