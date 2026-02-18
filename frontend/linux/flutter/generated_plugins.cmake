@@ -3,10 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-<<<<<<< HEAD
-=======
   file_selector_linux
->>>>>>> 2d7dfb2 (Inital commit)
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
