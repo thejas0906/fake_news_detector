@@ -1,26 +1,32 @@
 
-from backend.models import User,News
-from fastapi import FastAPI,Depends,HTTPException,status
-from backend.database import session,engine
+from backend.models import User,News,Token,TokenData
+from fastapi import FastAPI,Depends,HTTPException,status,APIRouter
+from backend.database import engine,get_db
 from typing import Annotated
 import backend.models_db as models_db
 from sqlalchemy.orm import Session
-from dotenv import load_dotenv,dotenv_values
+from dotenv import load_dotenv
 from pwdlib import PasswordHash
 from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
-load_dotenv()
-app=FastAPI()
-models_db.Base.metadata.create_all(bind=engine)
+from fastapi_swagger_dark import install
+import fastapi_swagger_dark as fsd
+import os
+from datetime import timedelta
+from backend.functions.auth_functions import get_current_user,authenticate,create_access_token,oauth2_scheme,password_hash
+load_dotenv() # laoding the env details from .env
 
-oauth2_scheme=OAuth2PasswordBearer(tokenUrl='token')
+app = FastAPI(docs_url=None)
+router = APIRouter()
+fsd.install(router)
+app.include_router(router)
+
+
+models_db.Base.metadata.create_all(bind=engine) #used to create all the tables in the db if it does not exist 
+
+
 users=[User(name='Thejas',email='kickgunther4@gmail.com',password='fastapi09#'),User(name='sakthi',email='sakthi@gmail.com',password='sak0909')]
 
-def get_db():
-    db=session()
-    try:
-        yield db
-    finally:
-        db.close()
+
 @app.post("/create_user/")
 def create_user(user:User,db:Session=Depends(get_db)):
     l=0
@@ -46,6 +52,7 @@ def create_user(user:User,db:Session=Depends(get_db)):
         
         if l+u+s+n==4:
                 users.append(user)
+                user.password=password_hash.hash(user.password)
                 db_user=models_db.User(**user.model_dump())
                 db.add(db_user)
                 db.commit()
@@ -54,21 +61,18 @@ def create_user(user:User,db:Session=Depends(get_db)):
         else:
             raise HTTPException(status_code=404,detail='User Not Added')
 
-def fake_decode_token(token):
-    return User(name="Ragav",email='ragav12345@gmail.com'+token,password='Ragav@123')
-def get_current_user(token:Annotated[str,Depends(oauth2_scheme)]):
-    user=fake_decode_token(token)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Unauthourised",headers={"WWW-Authenticate": "Bearer"})
-    return user
-@app.post('/login/')
-def login(form_data: Annotated[OAuth2PasswordRequestForm,Depends()],gmail:str,password:str,db:Session=Depends(get_db)):
 
-    auth_user=db.query(models_db.User).filter((models_db.User.email)==form_data.username).first()
+
+@app.post('/token')
+def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,Depends()],db:Session=Depends(get_db)) ->Token:
+
+    auth_user=authenticate(form_data.username,form_data.password,db)
+    
     if not auth_user:
-        raise HTTPException(status_code=400,detail='Incorrect Password or Username')
-    return {"access_token":auth_user.email,"token":"Bearer"}
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail='Incorrect Password or Username',headers={"WWW-Authenticate": "Bearer"},)
+    access_token_expires=timedelta(minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")))
+    access_token=create_access_token(data={"sub":str(auth_user.user_id)},expires_delta=access_token_expires)
+    return Token(access_token=access_token, token_type="bearer")
 
 
 
