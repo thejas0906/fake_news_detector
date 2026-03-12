@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import 'dart:io';
 
@@ -22,109 +24,443 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  bool _showRegister = false;
+  bool _isLoggedIn = false;
   bool _showPlus = true;
+
+  void _login() {
+    setState(() {
+      _isLoggedIn = true;
+    });
+  }
+
+  void _logout() {
+    setState(() {
+      _isLoggedIn = false;
+    });
+  }
+
+  void _showLoginPage() {
+    setState(() {
+      _showRegister = false;
+    });
+  }
+
+  void _showRegisterPage() {
+    setState(() {
+      _showRegister = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () {
-          setState(() => _showPlus = true); //  ANY TAP closes stack
-        },
-        child: Scaffold(
-          backgroundColor: Colors.white,
-          appBar: AppBar(
-            // 👤 User menu
-            leading: // ⋮ More options menu
-            PopupMenuButton<String>(
-              color: Colors.black87,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+      home: _isLoggedIn
+          ? _buildHome()
+          : _showRegister
+          ? RegisterPage(onRegister: _showLoginPage)
+          : LoginPage(onLogin: _login, onShowRegister: _showRegisterPage),
+    );
+  }
+
+  Widget _buildHome() {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        setState(() => _showPlus = true);
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          leading: PopupMenuButton<String>(
+            color: Colors.black87,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            icon: const Icon(Icons.more_vert),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'settings',
+                child: Text('Settings', style: TextStyle(color: Colors.white)),
               ),
-              icon: const Icon(Icons.more_vert),
+              PopupMenuItem(
+                value: 'help',
+                child: Text('Help', style: TextStyle(color: Colors.white)),
+              ),
+              PopupMenuItem(
+                value: 'about',
+                child: Text('About', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+          title: const Text('Fake News Detector'),
+          centerTitle: true,
+          backgroundColor: Colors.black87,
+          foregroundColor: Colors.white,
+
+          actions: [
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.person),
               onSelected: (value) {
-                switch (value) {
-                  case 'settings':
-                    debugPrint('Settings tapped');
-                    break;
-                  case 'help':
-                    debugPrint('Help tapped');
-                    break;
-                  case 'about':
-                    debugPrint('About tapped');
-                    break;
+                if (value == 'logout') {
+                  _logout();
                 }
               },
               itemBuilder: (context) => const [
                 PopupMenuItem(
-                  value: 'settings',
-                  child: Text(
-                    'Settings',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'help',
-                  child: Text('Help', style: TextStyle(color: Colors.white)),
-                ),
-                PopupMenuItem(
-                  value: 'about',
-                  child: Text('About', style: TextStyle(color: Colors.white)),
+                  value: 'logout',
+                  child: Text('Logout', style: TextStyle(color: Colors.red)),
                 ),
               ],
             ),
-            title: const Text('Fake News Detector'),
-            centerTitle: true,
-            backgroundColor: Colors.black87,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            actions: [
-              PopupMenuButton<String>(
-                color: Colors.black87,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                icon: const Icon(Icons.person),
-                onSelected: (value) {
-                  if (value == 'history') {
-                    debugPrint('History tapped');
-                  } else if (value == 'profile') {
-                    debugPrint('Profile tapped');
-                  }
+          ],
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 60),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: FakeNewsDetector(
+                showPlus: _showPlus,
+                onShowPlusChanged: (value) {
+                  setState(() => _showPlus = value);
                 },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: 'history',
-                    child: Text(
-                      'History',
-                      style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class RegisterPage extends StatefulWidget {
+  final VoidCallback onRegister;
+
+  const RegisterPage({super.key, required this.onRegister});
+
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
+  Future<void> _submit() async {
+    widget.onRegister();
+    if (_formKey.currentState!.validate()) {
+      await http.post(
+        Uri.parse("http://192.168.0.104:8000/register"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": _emailController.text,
+          "password": _passwordController.text,
+        }),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(color: Colors.black87),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(30),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.security, size: 40, color: Colors.white),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Fake News Detector",
+                    style: TextStyle(
+                      fontSize: 24,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  PopupMenuItem(
-                    value: 'profile',
-                    child: Text(
-                      'Profile',
-                      style: TextStyle(color: Colors.white),
+                  const SizedBox(height: 40),
+                  TextFormField(
+                    controller: _nameController,
+                    cursorColor: Colors.white,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Name",
+                      hintStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
                     ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Enter name";
+                      }
+
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: _emailController,
+                    cursorColor: Colors.white,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Email",
+                      hintStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Enter email";
+                      }
+                      if (value.length < 16 || value.length > 64) {
+                        return "Range must be between 6 and 64";
+                      }
+
+                      if (!value.endsWith("@gmail.com")) {
+                        return "Email must end with @gmail.com";
+                      }
+
+                      return null;
+                    },
+                  ),
+
+                  TextFormField(
+                    controller: _passwordController,
+                    cursorColor: Colors.white,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Password",
+                      hintStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Enter password";
+                      }
+                      if (value.length < 8) {
+                        return "Minimum 8 characters";
+                      }
+                      if (!RegExp(r'[A-Z]').hasMatch(value)) {
+                        return "At least 1 uppercase letter required";
+                      }
+                      if (!RegExp(r'[a-z]').hasMatch(value)) {
+                        return "At least 1 lowercase letter required";
+                      }
+                      if (!RegExp(r'[0-9]').hasMatch(value)) {
+                        return "At least 1 number required";
+                      }
+                      if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
+                        return "Must contain at least 1 special character";
+                      }
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    cursorColor: Colors.white,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: " Confirm Password",
+                      hintStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Confirm your password";
+                      }
+                      if (value != _passwordController.text) {
+                        return "Passwords do not match";
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  ElevatedButton(
+                    onPressed: () {
+                      _submit();
+                    },
+                    child: const Text("Register"),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+}
 
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 60),
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: FakeNewsDetector(
-                  showPlus: _showPlus,
-                  onShowPlusChanged: (value) {
-                    setState(() => _showPlus = value);
-                  },
-                ),
+/* LOGIN PAGE */
+
+class LoginPage extends StatefulWidget {
+  final VoidCallback onLogin;
+  final VoidCallback onShowRegister;
+
+  const LoginPage({
+    super.key,
+    required this.onLogin,
+    required this.onShowRegister,
+  });
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  Future<void> _submit() async {
+    if (_formKey.currentState!.validate()) {
+      final response = await http.post(
+        Uri.parse("http://192.168.0.104:8000/login"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": _emailController.text,
+          "password": _passwordController.text,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        widget.onLogin(); // go to home page
+      } else {
+        print("Invalid login");
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(color: Colors.black87),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.security, size: 40, color: Colors.white),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Fake News Detector",
+                    style: TextStyle(
+                      fontSize: 24,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 50),
+
+                  TextFormField(
+                    controller: _emailController,
+                    cursorColor: Colors.white,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Email",
+                      hintStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Enter email";
+                      }
+
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _passwordController,
+                    cursorColor: Colors.white,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Password",
+                      hintStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Enter password";
+                      }
+
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _submit,
+                      child: const Text(
+                        "LOGIN",
+                        style: TextStyle(color: Colors.black),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: widget.onShowRegister,
+                      child: const Text(
+                        "New User ? Register here",
+                        style: TextStyle(color: Colors.black),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -428,6 +764,7 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector> {
                           _controller.clear(); // show result only after Enter
                         });
                       },
+                      cursorColor: Colors.black,
                       decoration: InputDecoration(
                         hintText: 'Enter the content or title',
                         border: OutlineInputBorder(
@@ -530,4 +867,3 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 }
-
