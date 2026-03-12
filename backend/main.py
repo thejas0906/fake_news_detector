@@ -42,13 +42,18 @@ def create_user(user:User,db:Session=Depends(get_db)):
                 if i.isnumeric():
                     n=1
             if u==0:
-                return 'shld contain a uppercase'
+                # return 'shld contain a uppercase'
+                raise HTTPException(status_code=401,text='Should Contain a uppercase')
+                
             if s==0:
-                return 'shld contain !,@,#,&,$,*,^ any of the special characters'
+                # return 'shld contain !,@,#,&,$,*,^ any of the special characters'
+                raise HTTPException(status_code=401,text='Should Contain a special character')
             if n==0:
-                return 'shld contain atleast one digit'
+                # return 'shld contain atleast one digit'
+                raise HTTPException(status_code=401,text='Should Contain atleast 1 digit')
         else:
-            return 'length to be within 3 and 20 '
+            # return 'length to be within 3 and 20 '
+            raise HTTPException(status_code=401,text='Length to be within 3 and 20')
         
         if l+u+s+n==4:
                 users.append(user)

@@ -1,5 +1,5 @@
 from typing import Annotated
-from backend.models import User,News,Token,TokenData
+from backend.models import TokenData
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
 import jwt,os,uuid
