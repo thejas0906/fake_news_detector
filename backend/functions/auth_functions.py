@@ -11,7 +11,7 @@ from backend.database import get_db
 import backend.models_db as models_db
 SECRET_KEY=os.getenv("SECRET_KEY")
 ALGORITHM=os.getenv("ALGORITHM")
-oauth2_scheme=OAuth2PasswordBearer(tokenUrl='token')
+oauth2_scheme=OAuth2PasswordBearer(tokenUrl='login')
 password_hash=PasswordHash.recommended() #intitalizes the hashing algorithmns bcrypt and argon2
 def get_current_user(token:Annotated[str,Depends(oauth2_scheme)],db:Session=Depends(get_db)):
     
@@ -40,7 +40,7 @@ def get_user_by_email(email:str,db:Session):
 def authenticate(email:str,password:str,db:Session):
     user=get_user_by_email(email,db)
     if not user:
-        verify_password(password,'dummy')
+        #verify_password(password,'dummy')   ### this part is done even if the password stuff is wrong it will take same time to return op
         return False
     if not verify_password(password,user.password):
         return False
