@@ -1,6 +1,6 @@
 
 from backend.models import User,News,Token,TokenData,Prediction_Request
-from fastapi import FastAPI,Depends,HTTPException,status,APIRouter
+from fastapi import FastAPI,Depends,HTTPException,status,APIRouter,Body
 from backend.database import engine,get_db
 from typing import Annotated
 import backend.models_db as models_db
@@ -13,7 +13,8 @@ import fastapi_swagger_dark as fsd
 import os
 from datetime import timedelta,datetime
 from backend.functions.auth_functions import get_current_user,authenticate,create_access_token,oauth2_scheme,password_hash
-from backend.functions.predict_function import news_store
+from backend.functions.predict_function import news_store,predict,preprocess_news
+from backend.model_loader import loader
 load_dotenv() # laoding the env details from .env
 
 app = FastAPI(docs_url=None)
@@ -28,6 +29,9 @@ models_db.Base.metadata.create_all(bind=engine) #used to create all the tables i
 users=[User(name='Thejas',email='kickgunther4@gmail.com',password='fastapi09#'),User(name='sakthi',email='sakthi@gmail.com',password='sak0909')]
 
 
+@app.on_event('startup')
+def startup():
+    loader()
 @app.post("/create_user/")
 def create_user(user:User,db:Session=Depends(get_db)):
     l=0
@@ -95,14 +99,15 @@ def get_all_users(current_user:Annotated[str,Depends(get_current_user)]):
     return current_user
 
 @app.post("/predict")
-def predict_result(current_user:Annotated[models_db.User,Depends(get_current_user)],news_input:Prediction_Request,db:Session=Depends(get_db)):
+def predict_result(current_user:Annotated[models_db.User,Depends(get_current_user)],news_input:str = Body(...,embed=True),db:Session=Depends(get_db)):
     user=db.query(models_db.User).filter((models_db.User.user_id)==current_user.user_id).first()
     if not user:
         raise HTTPException(status_code=402,detail='Not Authorized')
     else:
-        news=news_input.input.lower()
+        news=preprocess_news(news_input)
+        print(news)
         if news:
-            prediction="Dummy" ## will be replaced with model.predict
+            prediction=predict(news) ## will be replaced with model.predict
             confi_value=9.8 # confidence value from model will be replaced here 
             news_send=News(user_id=current_user.user_id,news_text=news,prediction=prediction,confidence_value=confi_value,timestamp=datetime.now())
             news_store(news_send,db)
