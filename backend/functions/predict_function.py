@@ -7,7 +7,8 @@ import pickle
 import spacy
 import gensim.downloader as api
 import numpy as np
-
+import backend.model_loader as model_loader
+import re
 
 def news_store(news:News,db:Session):
     db_news=models_db.News(**news.model_dump())
@@ -16,23 +17,29 @@ def news_store(news:News,db:Session):
     db.refresh(db_news)
     return news
 
-def predict():
-   
 
-    wv = api.load('word2vec-google-news-300')
-    nlp = spacy.load("en_core_web_lg") 
+import re
+import unicodedata
 
+def preprocess_news(news: str):
+
+    news = unicodedata.normalize("NFKD", news)
+
+    news = news.lower()
+
+    news = news.replace("\n", " ")
+    news = news.replace("\r", " ")
+    news = news.replace("\t", " ")
+
+    news = re.sub(r"[\"'`’‘]", " ", news)
+
+    news = re.sub(r"\s+", " ", news)
+
+    return news.strip()
+def predict(news:str):
     """**Testing it with a news**"""
-
-    model_path = "backend.Models/XGBClassifier_model.pkl"
-    with open(model_path, 'rb') as file:
-        loaded_model = pickle.load(file)
-
-        clf = loaded_model
-
-
     def preprocess_and_vectorize(text):
-        doc = nlp(text)
+        doc = model_loader.nlp(text)
 
         filtered_tokens = [
             token.lemma_
@@ -41,21 +48,21 @@ def predict():
         ]
 
         if len(filtered_tokens) == 0:
-            return np.zeros(wv.vector_size)
+            return np.zeros(model_loader.wv.vector_size)
 
-        return wv.get_mean_vector(filtered_tokens)
+        return model_loader.wv.get_mean_vector(filtered_tokens)
 
 
     def predict_news(text):
         vector = preprocess_and_vectorize(text)
         vector = vector.reshape(1, -1)
 
-        prediction = clf.predict(vector)[0]
+        prediction = model_loader.clf.predict(vector)[0]
 
         return "Real" if prediction == 1 else "Fake"
 
 
 
-    news_article = input("Enter news: ")
-    result = predict_news(news_article)
-    print(f"The news article is {result}.")
+
+    result = predict_news(news)
+    return result

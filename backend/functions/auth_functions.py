@@ -38,7 +38,7 @@ def get_user_by_userid(user_id:uuid.UUID,db:Session):
 def get_user_by_email(email:str,db:Session):
     return db.query(models_db.User).filter((models_db.User.email)==email).first()
 def authenticate(email:str,password:str,db:Session):
-    user=get_user_by_email(email,db)
+    user=get_user_by_email(email.lower(),db)
     if not user:
         #verify_password(password,'dummy')   ### this part is done even if the password stuff is wrong it will take same time to return op
         return False
