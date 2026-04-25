@@ -23,18 +23,15 @@ import unicodedata
 
 def preprocess_news(news: str):
 
-    news = unicodedata.normalize("NFKD", news)
+    if not isinstance(news, str):
+        return ""
 
+    news = unicodedata.normalize("NFKC", news)
     news = news.lower()
-
-    news = news.replace("\n", " ")
-    news = news.replace("\r", " ")
-    news = news.replace("\t", " ")
-
-    news = re.sub(r"[\"'`’‘]", " ", news)
-
+    news = re.sub(r"[\n\r\t]+", " ", news)
+    news = news.replace('"', ' ')
+    news = re.sub(r"[^\w\s.,!?-]", " ", news)
     news = re.sub(r"\s+", " ", news)
-
     return news.strip()
 def predict(news:str):
     """**Testing it with a news**"""

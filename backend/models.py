@@ -20,3 +20,16 @@ class TokenData(BaseModel):
     user_id: UUID | None = None
 class Prediction_Request(BaseModel):
     input:str
+class ForgetPasswordRequest(BaseModel):
+    email: EmailStr
+class ResetPassword(BaseModel):
+    email: EmailStr
+    new_password: str
+    confirm_password: str
+class SuccessMessage(BaseModel):
+    success: bool
+    status_code: int
+    message: str
+class OTP(BaseModel):
+    email:EmailStr
+    otp:str

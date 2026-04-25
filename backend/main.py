@@ -1,5 +1,5 @@
 
-from backend.models import User,News,Token,TokenData,Prediction_Request
+from backend.models import User,News,Token,TokenData,Prediction_Request,ForgetPasswordRequest,ResetPassword,OTP
 from fastapi import FastAPI,Depends,HTTPException,status,APIRouter,Body
 from backend.database import engine,get_db
 from typing import Annotated
@@ -12,16 +12,25 @@ from fastapi_swagger_dark import install
 import fastapi_swagger_dark as fsd
 import os
 from datetime import timedelta,datetime
-from backend.functions.auth_functions import get_current_user,authenticate,create_access_token,oauth2_scheme,password_hash
+from backend.functions.auth_functions import get_current_user,authenticate,create_access_token,oauth2_scheme,password_hash,get_user_by_email,create_otp_for_email, verify_otp_for_email
 from backend.functions.predict_function import news_store,predict,preprocess_news
 from backend.model_loader import loader
+from starlette.responses import JSONResponse
+from starlette.background import BackgroundTasks
+from fastapi_mail import FastMail,MessageSchema,MessageType
+from jose import jwt,JWTError
+from backend.mail_config import mail_conf
+from backend.exceptions import CustomHttpException
+from backend.exceptions import ErrorLevel
 load_dotenv() # laoding the env details from .env
 
 app = FastAPI(docs_url=None)
 router = APIRouter()
 fsd.install(router)
 app.include_router(router)
-
+APP_HOST=os.getenv("APP_HOST")
+FORGET_PASSWORD_URL=os.getenv("FORGET_PASSWORD_URL")
+reset_token_expiry_minutes=os.getenv("reset_token_expiry_minutes")
 
 models_db.Base.metadata.create_all(bind=engine) #used to create all the tables in the db if it does not exist 
 
@@ -114,4 +123,89 @@ def predict_result(current_user:Annotated[models_db.User,Depends(get_current_use
         else:
             raise HTTPException(status_code=404,detail="No news Found")
     return {'prediction':prediction}
+
+@app.post("/send-otp")
+def forget_password(
+    background_tasks: BackgroundTasks,
+    fpr: ForgetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        user = get_user_by_email(fpr.email, db=db)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No account found with this email address"
+            )
+
+        # Create OTP in DB
+        otp = create_otp_for_email(email=user.email, db=db)
+
+        # Send OTP via email
+        message = MessageSchema(
+            subject="Your Password Reset OTP",
+            recipients=[fpr.email],
+            template_body=f"Your OTP is: <b>{otp}</b>. Valid for 10 minutes.",
+            subtype=MessageType.html
+        )
+        fm = FastMail(mail_conf)
+        background_tasks.add_task(fm.send_message, message, "mail/password_reset_otp.html")
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"message": "OTP sent to your email", "success": True}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise CustomHttpException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+            error_level=ErrorLevel.ERROR_LEVEL_2
+        )
+@app.post("/verify-otp")
+def verify_otp(otp:OTP,db:Session=Depends(get_db)):
+    print("API HIT")
+    print(otp.email,otp.otp)
+    is_valid = verify_otp_for_email(email=otp.email.lower().strip(), otp=otp.otp.strip(), db=db)
+    if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired OTP. Please request a new one."
+            )
+    return {"message":'OTP verfied '}
     
+
+@app.post("/reset-password")
+def reset_password(
+    rfp: ResetPassword,
+    db: Session = Depends(get_db)
+):
+    try:
+        if rfp.new_password != rfp.confirm_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Passwords do not match."
+            )
+        user = get_user_by_email(email=rfp.email,db=db)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found."
+            )
+
+        user.password = password_hash.hash(rfp.new_password)
+        db.add(user)
+        db.commit()
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"success": True, "message": "Password reset successful!"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something unexpected happened!"
+        )
