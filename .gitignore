@@ -34,3 +34,5 @@ __pycache__/
 
 .DS_Store
 credentials.json
+word2vec-google-news-300.kv
+word2vec-google-news-300.kv.vectors.npy
