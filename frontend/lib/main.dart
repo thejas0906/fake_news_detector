@@ -10,7 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Constants
 // ---------------------------------------------------------------------------
 
-const String _baseUrl = 'http://172.20.10.3:8000';
+const String _baseUrl = 'https://communication-offering-erik-entries.trycloudflare.com';
 
 // ---------------------------------------------------------------------------
 // Shared-preference helpers
@@ -385,15 +385,18 @@ class _LoginPageState extends State<LoginPage> {
 
       if (response.statusCode == 200) {
         await saveLogin();
+        final data = jsonDecode(response.body);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool("isLoggedIn", true);
+        await prefs.setString("token", data["access_token"]);
         widget.onLogin();
       } else if (response.statusCode == 401 || response.statusCode == 404) {
         setState(() => _loginError = 'User not found or wrong password');
       } else {
         setState(() => _loginError = 'Server error. Try again later.');
       }
-    } catch (_) {
-      setState(() => _loginError = 'Network error. Check your connection.');
-    } finally {
+    } 
+    finally {
       setState(() => _isLoading = false);
     }
   }
@@ -554,6 +557,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final _emailController = TextEditingController();
   final _otpController = TextEditingController();
   final _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
   String _error = '';
@@ -581,8 +585,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/send-otp'),
-        body: {'email': _emailController.text},
-      );
+        headers: {
+          "Content-Type": "application/json",
+          },
+          body: jsonEncode({
+            "email": _emailController.text
+            }),
+        );
 
       if (response.statusCode == 200) {
         setState(() => _step = 2);
@@ -609,13 +618,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/verify-otp'),
-        body: {
-          'email': _emailController.text,
-          'otp': _otpController.text,
+     final response = await http.post(
+      Uri.parse('$_baseUrl/verify-otp'),
+      headers: {
+        "Content-Type": "application/json",
         },
-      );
+        body: jsonEncode({
+          "email": _emailController.text.trim(),
+          "otp": _otpController.text.trim(),
+          }),);
+      
 
       if (response.statusCode == 200) {
         setState(() => _step = 3);
@@ -625,6 +637,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         setState(() => _error = 'Server error. Try again.');
       }
     } catch (_) {
+      
       setState(() => _error = 'Network error. Check your connection.');
     } finally {
       setState(() => _isLoading = false);
@@ -644,13 +657,17 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/reset-password'),
-        body: {
-          'email': _emailController.text,
-          'password': _newPasswordController.text,
+    final response = await http.post(
+      Uri.parse('$_baseUrl/reset-password'),
+      headers: {
+        "Content-Type": "application/json",
         },
-      );
+        body: jsonEncode({
+          "email": _emailController.text.trim(),
+          "new_password": _newPasswordController.text.trim(),
+          "confirm_password": _confirmPasswordController.text.trim(),
+        }),
+    );
 
       if (response.statusCode == 200) {
         if (!mounted) return;
@@ -721,8 +738,26 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     hint: 'New Password',
                     obscure: true,
                   ),
-                  const SizedBox(height: 20),
-                  _buildActionButton('Reset Password', _resetPassword),
+                  _buildTextField(
+                    controller: _confirmPasswordController,
+                    hint: 'Confirm Password',
+                    obscure: true,
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (_newPasswordController.text != _confirmPasswordController.text) {
+                        setState(() {
+                          _error = "Passwords do not match";
+                          });
+                          return;
+                      }
+                    _resetPassword(); 
+                    },
+                    child: const Text(
+                      "Reset Password",
+                      style: TextStyle(color: Colors.black),
+                      ),
+),
                 ],
 
                 if (_error.isNotEmpty)
@@ -808,48 +843,7 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector> {
   // API call – send text (and optional image) to the backend
   // -------------------------------------------------------------------
 
-  Future<void> _analyzeContent(String text) async {
-    setState(() {
-      _isAnalyzing = true;
-      _resultText = '';
-    });
-
-    try {
-      http.Response response;
-
-      if (_confirmedImagePath != null) {
-        // Multipart request when an image is attached
-        final request = http.MultipartRequest(
-          'POST',
-          Uri.parse('$_baseUrl/analyze/'),
-        );
-        request.fields['text'] = text;
-        request.files.add(
-          await http.MultipartFile.fromPath('image', _confirmedImagePath!),
-        );
-        final streamed = await request.send();
-        response = await http.Response.fromStream(streamed);
-      } else {
-        // JSON request for text only
-        response = await http.post(
-          Uri.parse('$_baseUrl/analyze/'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'text': text}),
-        );
-      }
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() => _resultText = data['result']?.toString() ?? 'No result');
-      } else {
-        setState(() => _resultText = 'Server error (${response.statusCode})');
-      }
-    } catch (_) {
-      setState(() => _resultText = 'Network error. Check your connection.');
-    } finally {
-      setState(() => _isAnalyzing = false);
-    }
-  }
+  
 
   // -------------------------------------------------------------------
   // Image helpers
@@ -909,14 +903,51 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector> {
   // Submit handler
   // -------------------------------------------------------------------
 
-  void _onSubmit(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty && _confirmedImagePath == null) return;
+  Future<void> _onSubmit(String input) async {
+  if (input.isEmpty) return;
 
-    setState(() => _inputText = trimmed);
-    _controller.clear();
-    _analyzeContent(trimmed);
+  setState(() {
+    _isAnalyzing = true;
+    _inputText = input;
+  });
+
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString("token"); 
+
+  try {
+    final response = await http.post(
+      Uri.parse("$_baseUrl/predict"),
+      headers: {
+        "Authorization": "Bearer $token",
+        "Content-Type": "application/json",
+      },
+      body: jsonEncode({
+        "news_input": input,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      setState(() {
+        _resultText = data["prediction"];
+      });
+    } else {
+      setState(() {
+        _resultText = "Server error: ${response.statusCode}";
+      });
+    }
+  } catch (e) {
+    setState(() {
+      print(e);
+      _resultText = "Network error";
+    });
+  } finally {
+    setState(() {
+      _isAnalyzing = false;
+    });
   }
+}
 
   // -------------------------------------------------------------------
   // Build
