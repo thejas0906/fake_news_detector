@@ -18,6 +18,38 @@ def news_store(news:News,db:Session):
     return news
 
 
+#  IMAGE DETECTION PART - OCR loaded in model_loader.py
+
+
+def extract_text_from_image(image_path: str) -> str:
+    result = model_loader.ocr.ocr(image_path, cls=True)
+
+    if not result or result[0] is None:
+        return ""
+
+    lines = []
+
+    for line in result[0]:
+        bbox = line[0]
+        text = line[1][0]
+        confidence = line[1][1]
+
+        # Filter low-confidence text
+        if confidence > 0.7:
+            y_coord = bbox[0][1]
+            lines.append((y_coord, text))
+
+    # Sort top → bottom
+    lines.sort(key=lambda x: x[0])          # sorted in ordr of pixels so as to maintain order of snetences
+
+    full_text = " ".join([t for _, t in lines])           # joining into a single string sep.ted by space and leaving out the y-coordinate("_")
+    full_text = re.sub(r'\s+', ' ', full_text).strip()          # removing extra spaces and newlines
+
+    return full_text
+
+
+
+
 import re
 import unicodedata
 
