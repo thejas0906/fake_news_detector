@@ -9,7 +9,7 @@ def loader():
     global wv,nlp,clf
     wv = KeyedVectors.load('word2vec-google-news-300.kv')
     nlp = spacy.load("en_core_web_lg") 
-    model_path = "backend\Models\XGBClassifier_model.pkl"
+    model_path = "backend/Models/XGBClassifier_model.pkl"
     with open(model_path, 'rb') as file:
         loaded_model = pickle.load(file)
         clf = loaded_model

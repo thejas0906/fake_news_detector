@@ -32,6 +32,8 @@ def preprocess_news(news: str):
     news = news.replace('"', ' ')
     news = re.sub(r"[^\w\s.,!?-]", " ", news)
     news = re.sub(r"\s+", " ", news)
+    
+    
     return news.strip()
 def predict(news:str):
     """**Testing it with a news**"""

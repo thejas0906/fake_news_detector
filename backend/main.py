@@ -1,15 +1,13 @@
 
-from backend.models import User,News,Token,TokenData,Prediction_Request,ForgetPasswordRequest,ResetPassword,OTP
+from backend.models import User,News,Token,Prediction_Request,ForgetPasswordRequest,ResetPassword,OTP
 from fastapi import FastAPI,Depends,HTTPException,status,APIRouter,Body
 from backend.database import engine,get_db
 from typing import Annotated
 import backend.models_db as models_db
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
-from pwdlib import PasswordHash
 from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
-from fastapi_swagger_dark import install
-import fastapi_swagger_dark as fsd
+#import fastapi_swagger_dark as fsd
 import os
 from datetime import timedelta,datetime
 from backend.functions.auth_functions import get_current_user,authenticate,create_access_token,oauth2_scheme,password_hash,get_user_by_email,create_otp_for_email, verify_otp_for_email
@@ -18,16 +16,15 @@ from backend.model_loader import loader
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
 from fastapi_mail import FastMail,MessageSchema,MessageType
-from jose import jwt,JWTError
 from backend.mail_config import mail_conf
-from backend.exceptions import CustomHttpException
-from backend.exceptions import ErrorLevel
+from backend.exceptions import CustomHttpException,ErrorLevel
 load_dotenv() # laoding the env details from .env
 
-app = FastAPI(docs_url=None)
-router = APIRouter()
-fsd.install(router)
-app.include_router(router)
+#app = FastAPI(docs_url=None)
+app=FastAPI()
+# router = APIRouter()
+# fsd.install(router)
+# app.include_router(router)
 APP_HOST=os.getenv("APP_HOST")
 FORGET_PASSWORD_URL=os.getenv("FORGET_PASSWORD_URL")
 reset_token_expiry_minutes=os.getenv("reset_token_expiry_minutes")
@@ -209,3 +206,6 @@ def reset_password(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Something unexpected happened!"
         )
+    
+# @app.post("/predict_image")
+# def predict_image():
