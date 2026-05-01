@@ -1,6 +1,6 @@
 
 from backend.models import User,News,Token,TokenData,Prediction_Request,ForgetPasswordRequest,ResetPassword,OTP
-from fastapi import FastAPI,Depends,HTTPException,status,APIRouter,Body
+from fastapi import FastAPI,Depends,HTTPException,status,APIRouter,Body,UploadFile,File
 from backend.database import engine,get_db
 from typing import Annotated
 import backend.models_db as models_db
@@ -13,7 +13,7 @@ import fastapi_swagger_dark as fsd
 import os
 from datetime import timedelta,datetime
 from backend.functions.auth_functions import get_current_user,authenticate,create_access_token,oauth2_scheme,password_hash,get_user_by_email,create_otp_for_email, verify_otp_for_email
-from backend.functions.predict_function import news_store,predict,preprocess_news
+from backend.functions.predict_function import news_store,predict,preprocess_news, extract_text_from_image          # image extraction added
 from backend.model_loader import loader
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
@@ -123,6 +123,40 @@ def predict_result(current_user:Annotated[models_db.User,Depends(get_current_use
         else:
             raise HTTPException(status_code=404,detail="No news Found")
     return {'prediction':prediction}
+
+
+
+@app.post("/predict-image")
+async def predict_image_endpoint(current_user:Annotated[models_db.User,Depends(get_current_user)],image_file: UploadFile = File(...),db:Session=Depends(get_db)):                                
+   
+    user=db.query(models_db.User).filter((models_db.User.user_id)==current_user.user_id).first()
+    if not user:
+        raise HTTPException(status_code=402,detail='Not Authorized')
+    
+    contents = await image_file.read()               # read bytes from img file
+    temp_path = "temp_image.png"
+    with open(temp_path, "wb") as f:
+        f.write(contents)                           # write into temp img file
+    try:
+        news = extract_text_from_image(temp_path)      # try - finally block to delete temp img file after use        
+        news = preprocess_news(news)
+        print(news)
+
+        if news:
+            prediction=predict(news) ## will be replaced with model.predict
+            confi_value=9.8 # confidence value from model will be replaced here 
+            news_send=News(user_id=current_user.user_id,news_text=news,prediction=prediction,confidence_value=confi_value,timestamp=datetime.now())
+            news_store(news_send,db)
+
+            return {'prediction':prediction}
+        
+        else:
+            raise HTTPException(status_code=404,detail="No news Found")
+            
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        
 
 @app.post("/send-otp")
 def forget_password(
