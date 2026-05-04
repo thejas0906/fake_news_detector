@@ -929,7 +929,7 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
     try {
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$_baseUrl/predict_image'),
+        Uri.parse('$_baseUrl/predict-image'),
       );
       request.headers['Authorization'] = 'Bearer $token';
       request.files.add(await http.MultipartFile.fromPath('file', imagePath));
