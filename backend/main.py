@@ -1,6 +1,6 @@
 
-from backend.models import User,News,Token,Prediction_Request,ForgetPasswordRequest,ResetPassword,OTP
-from fastapi import FastAPI,Depends,HTTPException,status,APIRouter,Body
+from backend.models import User,News,Token,TokenData,Prediction_Request,ForgetPasswordRequest,ResetPassword,OTP
+from fastapi import FastAPI,Depends,HTTPException,status,APIRouter,Body,UploadFile,File
 from backend.database import engine,get_db
 from typing import Annotated
 import backend.models_db as models_db
@@ -11,13 +11,16 @@ from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
 import os
 from datetime import timedelta,datetime
 from backend.functions.auth_functions import get_current_user,authenticate,create_access_token,oauth2_scheme,password_hash,get_user_by_email,create_otp_for_email, verify_otp_for_email
-from backend.functions.predict_function import news_store,predict,preprocess_news
-from backend.model_loader import loader
+from backend.functions.predict_function import news_store,predict,preprocess_news, extract_text_from_image          # image extraction added
+import backend.model_loader as model_loader
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
 from fastapi_mail import FastMail,MessageSchema,MessageType
 from backend.mail_config import mail_conf
 from backend.exceptions import CustomHttpException,ErrorLevel
+import uuid
+import numpy as np
+import cv2
 load_dotenv() # laoding the env details from .env
 
 #app = FastAPI(docs_url=None)
@@ -37,7 +40,7 @@ users=[User(name='Thejas',email='kickgunther4@gmail.com',password='fastapi09#'),
 
 @app.on_event('startup')
 def startup():
-    loader()
+    model_loader.loader()
 @app.post("/create_user/")
 def create_user(user:User,db:Session=Depends(get_db)):
     l=0
@@ -121,6 +124,76 @@ def predict_result(current_user:Annotated[models_db.User,Depends(get_current_use
             raise HTTPException(status_code=404,detail="No news Found")
     return {'prediction':prediction}
 
+
+
+@app.post("/predict-image")
+async def predict_image_endpoint(
+    current_user: Annotated[models_db.User, Depends(get_current_user)],
+    image_file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+
+    # Auth check
+    user = db.query(models_db.User).filter(
+        models_db.User.user_id == current_user.user_id
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail='Not Authorized')
+
+    # OCR check
+    if model_loader.ocr is None:
+        raise HTTPException(status_code=500, detail="OCR model not loaded")
+
+    # Read file
+    contents = await image_file.read()
+
+    print("Filename:", image_file.filename)
+    print("Content size:", len(contents))
+
+    # Validate file
+    if len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Empty image file")
+
+    # Decode image (no temp file)
+    img_array = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+    if img is None:
+        print("Image decode failed")
+        raise HTTPException(status_code=400, detail="Invalid image format")
+
+    try:
+        # OCR
+        news = extract_text_from_image(img)
+
+        news = preprocess_news(news)
+        print("Extracted text:", news)
+
+        if news:
+            prediction = predict(news)
+
+            news_send = News(
+                user_id=current_user.user_id,
+                news_text=news,
+                prediction=prediction,
+                confidence_value=9.8,
+                timestamp=datetime.now()
+            )
+
+            news_store(news_send, db)
+
+            return {"prediction": prediction}
+
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="No text extracted from image"
+            )
+
+    except Exception as e:
+        print("PROCESSING ERROR:", str(e))
+        raise HTTPException(status_code=500, detail="Processing failed")
 @app.post("/send-otp")
 def forget_password(
     background_tasks: BackgroundTasks,
@@ -207,5 +280,3 @@ def reset_password(
             detail="Something unexpected happened!"
         )
     
-# @app.post("/predict_image")
-# def predict_image():

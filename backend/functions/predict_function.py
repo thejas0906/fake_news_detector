@@ -9,7 +9,7 @@ import gensim.downloader as api
 import numpy as np
 import backend.model_loader as model_loader
 import re
-
+import unicodedata
 def news_store(news:News,db:Session):
     db_news=models_db.News(**news.model_dump())
     db.add(db_news)
@@ -18,8 +18,37 @@ def news_store(news:News,db:Session):
     return news
 
 
-import re
-import unicodedata
+#  IMAGE DETECTION PART - OCR loaded in model_loader.py
+
+
+def extract_text_from_image(image_path: str) -> str:
+    try:
+        print("Running EasyOCR...")
+
+        result = model_loader.ocr.readtext(image_path)
+
+        print("OCR result:", result)
+
+        if not result:
+            print("No text detected")
+            return ""
+
+        # Extract only text
+        texts = [item[1] for item in result]
+
+        full_text = " ".join(texts)
+
+        full_text = re.sub(r'\s+', ' ', full_text).strip()
+
+        print("Final extracted text:", full_text)
+
+        return full_text
+
+    except Exception as e:
+        print("OCR ERROR:", str(e))
+        return ""
+
+
 
 def preprocess_news(news: str):
 
