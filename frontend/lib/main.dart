@@ -11,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // ---------------------------------------------------------------------------
 
 const String _baseUrl =
-    'https://greensboro-pack-loop-registration.trycloudflare.com';
+    'https://quizzes-beside-distribute-viruses.trycloudflare.com';
 
 // ---------------------------------------------------------------------------
 // Shared-preference helpers
@@ -27,6 +27,11 @@ Future<bool> checkLogin() async {
   return prefs.getBool('isLoggedIn') ?? false;
 }
 
+Future<String?> getToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('token');
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -35,7 +40,11 @@ late List<CameraDescription> cameras;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  cameras = await availableCameras();
+  try {
+    cameras = await availableCameras();
+  } catch (e) {
+    cameras = [];
+  }
   runApp(const MyApp());
 }
 
@@ -66,8 +75,8 @@ class _MyAppState extends State<MyApp> {
       home: _isLoggedIn
           ? _buildHome()
           : _showRegister
-          ? RegisterPage(onRegister: _showLoginPage)
-          : LoginPage(onLogin: _login, onShowRegister: _showRegisterPage),
+              ? RegisterPage(onRegister: _showLoginPage)
+              : LoginPage(onLogin: _login, onShowRegister: _showRegisterPage),
     );
   }
 
@@ -115,9 +124,9 @@ class _MyAppState extends State<MyApp> {
           ),
         ],
       ),
-      body: SafeArea(
+      body: const SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 60),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 60),
           child: Align(
             alignment: Alignment.bottomCenter,
             child: FakeNewsDetector(),
@@ -129,7 +138,7 @@ class _MyAppState extends State<MyApp> {
 }
 
 // ---------------------------------------------------------------------------
-// REGISTER PAGE  — back button / arrow returns to Login
+// REGISTER PAGE
 // ---------------------------------------------------------------------------
 
 class RegisterPage extends StatefulWidget {
@@ -180,7 +189,7 @@ class _RegisterPageState extends State<RegisterPage> {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        widget.onRegister(); // goes back to Login
+        widget.onRegister();
       } else {
         setState(
           () => _errorMessage = 'Registration failed. Please try again.',
@@ -195,11 +204,10 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   Widget build(BuildContext context) {
-    // WillPopScope intercepts the Android system back button
     return WillPopScope(
       onWillPop: () async {
-        widget.onRegister(); // navigate back to Login in MyApp state
-        return false; // we handle navigation ourselves
+        widget.onRegister();
+        return false;
       },
       child: Scaffold(
         body: Container(
@@ -214,15 +222,14 @@ class _RegisterPageState extends State<RegisterPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Back arrow at the top-left
                     Align(
                       alignment: Alignment.centerLeft,
                       child: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        icon:
+                            const Icon(Icons.arrow_back, color: Colors.white),
                         onPressed: widget.onRegister,
                       ),
                     ),
-
                     const Icon(Icons.security, size: 40, color: Colors.white),
                     const SizedBox(height: 20),
                     const Text(
@@ -234,14 +241,12 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
                     _buildTextField(
                       controller: _nameController,
                       hint: 'Name',
                       validator: (v) =>
                           (v == null || v.isEmpty) ? 'Enter name' : null,
                     ),
-
                     _buildTextField(
                       controller: _emailController,
                       hint: 'Email',
@@ -256,7 +261,6 @@ class _RegisterPageState extends State<RegisterPage> {
                         return null;
                       },
                     ),
-
                     _buildTextField(
                       controller: _passwordController,
                       hint: 'Password',
@@ -279,35 +283,28 @@ class _RegisterPageState extends State<RegisterPage> {
                         return null;
                       },
                     ),
-
                     _buildTextField(
                       controller: _confirmPasswordController,
                       hint: 'Confirm Password',
                       obscure: true,
                       validator: (v) {
-                        if (v == null || v.isEmpty)
-                          return 'Confirm your password';
+                        if (v == null || v.isEmpty) return 'Confirm password';
                         if (v != _passwordController.text) {
                           return 'Passwords do not match';
                         }
                         return null;
                       },
                     ),
-
                     if (_errorMessage.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
                         child: Text(
                           _errorMessage,
                           style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 14,
-                          ),
+                              color: Colors.red, fontSize: 14),
                         ),
                       ),
-
                     const SizedBox(height: 20),
-
                     _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : ElevatedButton(
@@ -392,26 +389,29 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      // Login uses form-encoded body (OAuth2 standard)
       final response = await http.post(
         Uri.parse('$_baseUrl/login'),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: {
-          'username': _emailController.text,
+          'username': _emailController.text.trim(),
           'password': _passwordController.text,
         },
       );
 
       if (response.statusCode == 200) {
-        await saveLogin();
         final data = jsonDecode(response.body);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);
-        await prefs.setString('token', data['access_token']);
+        await prefs.setString('token', data['access_token'] as String);
         widget.onLogin();
       } else if (response.statusCode == 401 || response.statusCode == 404) {
         setState(() => _loginError = 'User not found or wrong password');
       } else {
         setState(() => _loginError = 'Server error. Try again later.');
       }
+    } catch (e) {
+      setState(() => _loginError = 'Network error. Check your connection.');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -443,11 +443,11 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   const SizedBox(height: 50),
-
                   TextFormField(
                     controller: _emailController,
                     cursorColor: Colors.white,
                     style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
                       hintText: 'Email',
                       hintStyle: TextStyle(color: Colors.white70),
@@ -461,9 +461,7 @@ class _LoginPageState extends State<LoginPage> {
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Enter email' : null,
                   ),
-
                   const SizedBox(height: 20),
-
                   TextFormField(
                     controller: _passwordController,
                     cursorColor: Colors.white,
@@ -482,18 +480,16 @@ class _LoginPageState extends State<LoginPage> {
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Enter password' : null,
                   ),
-
                   if (_loginError.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Text(
                         _loginError,
-                        style: const TextStyle(color: Colors.red, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.red, fontSize: 14),
                       ),
                     ),
-
                   const SizedBox(height: 30),
-
                   SizedBox(
                     width: double.infinity,
                     child: _isLoading
@@ -510,9 +506,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                   ),
-
                   const SizedBox(height: 24),
-
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -523,7 +517,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
                   TextButton(
                     onPressed: () {
                       Navigator.push(
@@ -554,7 +547,7 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 // ---------------------------------------------------------------------------
-// FORGOT PASSWORD PAGE  (3-step: email → OTP → new password)
+// FORGOT PASSWORD PAGE
 // ---------------------------------------------------------------------------
 
 class ForgotPasswordPage extends StatefulWidget {
@@ -570,8 +563,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final _emailController = TextEditingController();
   final _otpController = TextEditingController();
   final _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
   String _error = '';
@@ -598,7 +590,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       final response = await http.post(
         Uri.parse('$_baseUrl/send-otp'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': _emailController.text}),
+        body: jsonEncode({'email': _emailController.text.trim()}),
       );
       if (response.statusCode == 200) {
         setState(() => _step = 2);
@@ -647,6 +639,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   Future<void> _resetPassword() async {
     if (_newPasswordController.text.isEmpty) {
       setState(() => _error = 'Please enter a new password');
+      return;
+    }
+    if (_newPasswordController.text != _confirmPasswordController.text) {
+      setState(() => _error = 'Passwords do not match');
       return;
     }
     setState(() {
@@ -703,7 +699,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   ),
                 ),
                 const SizedBox(height: 40),
-
                 if (_step == 1) ...[
                   _buildTextField(
                     controller: _emailController,
@@ -712,7 +707,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   const SizedBox(height: 20),
                   _buildActionButton('Send OTP', _sendOtp),
                 ],
-
                 if (_step == 2) ...[
                   _buildTextField(
                     controller: _otpController,
@@ -722,34 +716,21 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   const SizedBox(height: 20),
                   _buildActionButton('Verify OTP', _verifyOtp),
                 ],
-
                 if (_step == 3) ...[
                   _buildTextField(
                     controller: _newPasswordController,
                     hint: 'New Password',
                     obscure: true,
                   ),
+                  const SizedBox(height: 12),
                   _buildTextField(
                     controller: _confirmPasswordController,
                     hint: 'Confirm Password',
                     obscure: true,
                   ),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (_newPasswordController.text !=
-                          _confirmPasswordController.text) {
-                        setState(() => _error = 'Passwords do not match');
-                        return;
-                      }
-                      _resetPassword();
-                    },
-                    child: const Text(
-                      'Reset Password',
-                      style: TextStyle(color: Colors.black),
-                    ),
-                  ),
+                  const SizedBox(height: 20),
+                  _buildActionButton('Reset Password', _resetPassword),
                 ],
-
                 if (_error.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -811,66 +792,84 @@ class FakeNewsDetector extends StatefulWidget {
   State<FakeNewsDetector> createState() => _FakeNewsDetectorState();
 }
 
-class _FakeNewsDetectorState extends State<FakeNewsDetector>
-    with SingleTickerProviderStateMixin {
+class _FakeNewsDetectorState extends State<FakeNewsDetector> {
   final TextEditingController _controller = TextEditingController();
 
   static const double _textFieldHeight = 50;
   static const double _iconButtonSize = 48;
 
-  String _inputText = ''; // shown in the Input card
-  String _resultText = ''; // shown in the Result card
+  String _inputText = '';
+  String _resultText = '';
   bool _isAnalyzing = false;
-
-  // Tracks whether the current input came from an image upload
   bool _imageUploaded = false;
-
-  // Controls the animated radial icon tray above the plus button
-  bool _menuOpen = false;
-  late final AnimationController _menuAnimController;
-  late final Animation<double> _menuAnim;
 
   final ImagePicker _picker = ImagePicker();
 
-  @override
-  void initState() {
-    super.initState();
-    _menuAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
-    _menuAnim = CurvedAnimation(
-      parent: _menuAnimController,
-      curve: Curves.easeOutBack,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _menuAnimController.dispose();
-    super.dispose();
-  }
-
   // -------------------------------------------------------------------
-  // Menu helpers
+  // Show the bottom sheet menu for camera / gallery
   // -------------------------------------------------------------------
-
-  void _openMenu() {
-    setState(() => _menuOpen = true);
-    _menuAnimController.forward();
-  }
-
-  void _closeMenu() {
-    _menuAnimController.reverse().then((_) {
-      if (mounted) setState(() => _menuOpen = false);
-    });
+  void _showAttachMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.black87,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white30,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Colors.white12,
+                    child: Icon(Icons.camera_alt, color: Colors.white),
+                  ),
+                  title: const Text(
+                    'Take a photo',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _openCamera();
+                  },
+                ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Colors.white12,
+                    child: Icon(Icons.image, color: Colors.white),
+                  ),
+                  title: const Text(
+                    'Choose from gallery',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickFromGallery();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // -------------------------------------------------------------------
   // API call – text prediction
   // -------------------------------------------------------------------
-
   Future<void> _onSubmit(String input) async {
     final trimmed = input.trim();
     if (trimmed.isEmpty) return;
@@ -883,8 +882,7 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
     });
     _controller.clear();
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+    final token = await getToken();
 
     try {
       final response = await http.post(
@@ -899,52 +897,70 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() => _resultText = data['prediction'].toString());
+      } else if (response.statusCode == 401) {
+        setState(() => _resultText = 'Unauthorized. Please log in again.');
       } else {
         setState(() => _resultText = 'Server error: ${response.statusCode}');
       }
     } catch (e) {
-      setState(() => _resultText = 'Network error');
+      setState(() => _resultText = 'Network error: $e');
     } finally {
       setState(() => _isAnalyzing = false);
     }
   }
 
   // -------------------------------------------------------------------
-  // API call – image prediction  (POST /predict_image)
-  // Called immediately after the user taps ✓ on the full-screen preview.
-  // No second thumbnail is shown in the main screen.
+  // API call – image prediction  (POST /predict-image)
+  // Field name must match backend param: image_file
   // -------------------------------------------------------------------
-
   Future<void> _sendImage(String imagePath) async {
-    setState(() {
-      _isAnalyzing = true;
-      _imageUploaded = true;
-      _inputText = '📷 Image uploaded';
-      _resultText = '';
-    });
+  final file = File(imagePath);
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+  print("Path: $imagePath");
+  print("Exists: ${file.existsSync()}");
+  print("Size: ${file.lengthSync()}");  
 
-    try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$_baseUrl/predict-image'),
-      );
-      request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(await http.MultipartFile.fromPath('file', imagePath));
+  setState(() {
+    _isAnalyzing = true;
+    _imageUploaded = true;
+    _inputText = 'Image uploaded';
+    _resultText = '';
+  });
 
-      final streamed = await request.send();
-      final response = await http.Response.fromStream(streamed);
+  final token = await getToken();
+
+  try {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_baseUrl/predict-image'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'image_file',
+        imagePath,
+        filename: imagePath.split('/').last, 
+      ),
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() => _resultText = data['prediction'].toString());
+      } else if (response.statusCode == 401) {
+        setState(() => _resultText = 'Unauthorized. Please log in again.');
+      } else if (response.statusCode == 404) {
+        final data= jsonDecode(response.body);
+        setState(() => _resultText = data['detail']??"Not found");
       } else {
         setState(() => _resultText = 'Server error: ${response.statusCode}');
       }
     } catch (e) {
-      setState(() => _resultText = 'Network error');
+      setState(() => _resultText = 'Network error: $e');
     } finally {
       setState(() => _isAnalyzing = false);
     }
@@ -955,26 +971,49 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
   // -------------------------------------------------------------------
 
   Future<void> _pickFromGallery() async {
-    _closeMenu();
-    // Small delay so the menu finishes closing before the picker opens
-    await Future.delayed(const Duration(milliseconds: 250));
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-    if (image != null) await _showFullScreenPreview(image.path);
+    try {
+      final XFile? image =
+          await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null && mounted) {
+        await _showFullScreenPreview(image.path);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gallery error: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _openCamera() async {
-    _closeMenu();
-    await Future.delayed(const Duration(milliseconds: 250));
-    final imagePath = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(builder: (_) => const CameraScreen()),
-    );
-    if (imagePath != null) await _showFullScreenPreview(imagePath);
+    if (cameras.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No camera available on this device')),
+      );
+      return;
+    }
+    try {
+      final imagePath = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(builder: (_) => const CameraScreen()),
+      );
+      if (imagePath != null && mounted) {
+        await _showFullScreenPreview(imagePath);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Camera error: $e')),
+        );
+      }
+    }
   }
 
-  // Full-screen preview only — no second thumbnail in the main screen.
-  // On ✓ → send to /predict_image directly.
+  // Full-screen preview — on ✓ sends to /predict-image
   Future<void> _showFullScreenPreview(String imagePath) async {
+    if (!mounted) return;
+
     final accepted = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -983,7 +1022,9 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
         body: SafeArea(
           child: Stack(
             children: [
-              Center(child: Image.file(File(imagePath), fit: BoxFit.contain)),
+              Center(
+                child: Image.file(File(imagePath), fit: BoxFit.contain),
+              ),
               Positioned(
                 bottom: 30,
                 left: 0,
@@ -1012,8 +1053,8 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
       ),
     );
 
-    if (accepted == true) {
-      await _sendImage(imagePath); // send to backend, no thumbnail stored
+    if (accepted == true && mounted) {
+      await _sendImage(imagePath);
     }
   }
 
@@ -1029,207 +1070,129 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
     return SizedBox(
       width: double.infinity,
       height: isLandscape ? 160 : 620,
-      child: GestureDetector(
-        // Tapping anywhere outside the menu tray closes it
-        onTap: () {
-          if (_menuOpen) _closeMenu();
-        },
-        behavior: HitTestBehavior.translucent,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // ---- Input display box (larger) ----
-            if (_inputText.isNotEmpty)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: _resultCard(
-                  // When it's an image upload just show the icon+text directly
-                  label: _imageUploaded ? '' : 'Input',
-                  content: _inputText,
-                  maxHeight: 200, // increased
-                ),
-              ),
-
-            // ---- Result box (pushed lower) ----
-            if (_inputText.isNotEmpty)
-              Positioned(
-                top: 220, // lowered
-                left: 0,
-                right: 0,
-                child: _isAnalyzing
-                    ? const Center(child: CircularProgressIndicator())
-                    : _resultCard(
-                        label: 'Result',
-                        content: _resultText,
-                        maxHeight: 300,
-                      ),
-              ),
-
-            // ---- Bottom input row ----
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // ---- Input display box ----
+          if (_inputText.isNotEmpty)
             Positioned(
-              bottom: 0,
+              top: 0,
               left: 0,
               right: 0,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // ── Plus button + animated radial tray ──
-                  SizedBox(
-                    width: _iconButtonSize,
-                    height: _iconButtonSize,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.center,
-                      children: [
-                        // Animated icon tray — expands upward from the plus button
-                        if (_menuOpen)
-                          AnimatedBuilder(
-                            animation: _menuAnim,
-                            builder: (_, __) => Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                // Camera — topmost slot
-                                Positioned(
-                                  bottom:
-                                      _iconButtonSize +
-                                      4 +
-                                      (_menuAnim.value * 108),
-                                  left: 0,
-                                  child: _radialBtn(
-                                    icon: Icons.camera_alt,
-                                    onTap: _openCamera,
-                                  ),
-                                ),
-                                // Gallery — middle slot
-                                Positioned(
-                                  bottom:
-                                      _iconButtonSize +
-                                      4 +
-                                      (_menuAnim.value * 54),
-                                  left: 0,
-                                  child: _radialBtn(
-                                    icon: Icons.image,
-                                    onTap: _pickFromGallery,
-                                  ),
-                                ),
-                                // Close — lowest slot, sits just above the plus
-                                // button so the transition overlaps it
-                                Positioned(
-                                  bottom: _iconButtonSize + 4,
-                                  left: 0,
-                                  child: _radialBtn(
-                                    icon: Icons.close,
-                                    onTap: _closeMenu,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                        // Plus button (always rendered; covered by tray when open)
-                        Material(
-                          color: Colors.black87,
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: _menuOpen ? _closeMenu : _openMenu,
-                            child: SizedBox(
-                              width: _iconButtonSize,
-                              height: _iconButtonSize,
-                              child: const Icon(Icons.add, color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  // Text field — hint changes to image icon + text when
-                  // an image was just uploaded
-                  Expanded(
-                    child: SizedBox(
-                      height: _textFieldHeight,
-                      child: TextField(
-                        controller: _controller,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: _onSubmit,
-                        cursorColor: Colors.black,
-                        decoration: InputDecoration(
-                          hintText: _imageUploaded
-                              ? 'Image uploaded'
-                              : 'Enter the content or title',
-                          prefixIcon: _imageUploaded
-                              ? const Icon(
-                                  Icons.image,
-                                  color: Colors.black54,
-                                  size: 20,
-                                )
-                              : null,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(40),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: Colors.black87),
-                            borderRadius: BorderRadius.circular(40),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(
-                              color: Colors.black87,
-                              width: 3,
-                            ),
-                            borderRadius: BorderRadius.circular(40),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  // Send button
-                  SizedBox(
-                    width: _iconButtonSize,
-                    height: _iconButtonSize,
-                    child: Material(
-                      color: Colors.black87,
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.white),
-                        onPressed: () => _onSubmit(_controller.text),
-                      ),
-                    ),
-                  ),
-                ],
+              child: _resultCard(
+                label: _imageUploaded ? '' : 'Input',
+                content: _inputText,
+                maxHeight: 200,
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  // Small circular button used inside the radial tray
-  Widget _radialBtn({required IconData icon, required VoidCallback onTap}) {
-    return Material(
-      color: Colors.black87,
-      shape: const CircleBorder(),
-      elevation: 4,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: _iconButtonSize,
-          height: _iconButtonSize,
-          child: Icon(icon, color: Colors.white),
-        ),
+          // ---- Result box ----
+          if (_inputText.isNotEmpty)
+            Positioned(
+              top: 220,
+              left: 0,
+              right: 0,
+              child: _isAnalyzing
+                  ? const Center(child: CircularProgressIndicator())
+                  : _resultCard(
+                      label: 'Result',
+                      content: _resultText,
+                      maxHeight: 300,
+                    ),
+            ),
+
+          // ---- Bottom input row ----
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Plus / attach button — opens bottom sheet
+                SizedBox(
+                  width: _iconButtonSize,
+                  height: _iconButtonSize,
+                  child: Material(
+                    color: Colors.black87,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _showAttachMenu,
+                      child: const SizedBox(
+                        width: double.infinity,
+                        height: double.infinity,
+                        child: Icon(Icons.add, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // Text field
+                Expanded(
+                  child: SizedBox(
+                    height: _textFieldHeight,
+                    child: TextField(
+                      controller: _controller,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: _onSubmit,
+                      cursorColor: Colors.black,
+                      decoration: InputDecoration(
+                        hintText: _imageUploaded
+                            ? 'Image uploaded'
+                            : 'Enter the content or title',
+                        prefixIcon: _imageUploaded
+                            ? const Icon(
+                                Icons.image,
+                                color: Colors.black54,
+                                size: 20,
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide:
+                              const BorderSide(color: Colors.black87),
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(
+                            color: Colors.black87,
+                            width: 3,
+                          ),
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // Send button
+                SizedBox(
+                  width: _iconButtonSize,
+                  height: _iconButtonSize,
+                  child: Material(
+                    color: Colors.black87,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      onPressed: () => _onSubmit(_controller.text),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1253,7 +1216,8 @@ class _FakeNewsDetectorState extends State<FakeNewsDetector>
         child: SingleChildScrollView(
           child: Text(
             label.isEmpty ? content : '$label: $content',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            style:
+                const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -1279,7 +1243,11 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = CameraController(cameras.first, ResolutionPreset.medium);
+    _controller = CameraController(
+      cameras.first,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
     _initializeFuture = _controller.initialize();
   }
 
@@ -1287,6 +1255,20 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _takePicture() async {
+    try {
+      await _initializeFuture;
+      final image = await _controller.takePicture();
+      if (!mounted) return;
+      Navigator.pop(context, image.path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to take photo: $e')),
+      );
+    }
   }
 
   @override
@@ -1307,36 +1289,33 @@ class _CameraScreenState extends State<CameraScreen> {
           if (snapshot.connectionState == ConnectionState.done) {
             if (snapshot.hasError) {
               return Center(
-                child: Text(
-                  'Camera error: ${snapshot.error}',
-                  style: const TextStyle(color: Colors.white),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    'Camera error:\n${snapshot.error}',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               );
             }
             return OrientationBuilder(
-              builder: (_, orientation) => orientation == Orientation.landscape
-                  ? Center(child: CameraPreview(_controller))
-                  : CameraPreview(_controller),
+              builder: (_, orientation) =>
+                  orientation == Orientation.landscape
+                      ? Center(child: CameraPreview(_controller))
+                      : CameraPreview(_controller),
             );
           }
-          return const Center(child: CircularProgressIndicator());
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          );
         },
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          try {
-            final image = await _controller.takePicture();
-            if (!mounted) return;
-            Navigator.pop(context, image.path);
-          } catch (e) {
-            if (!mounted) return;
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Failed to take photo: $e')));
-          }
-        },
-        child: const Icon(Icons.camera),
+        backgroundColor: Colors.white,
+        onPressed: _takePicture,
+        child: const Icon(Icons.camera, color: Colors.black),
       ),
     );
   }
